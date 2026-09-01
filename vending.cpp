@@ -12,7 +12,7 @@ struct Item
     string name;
     int priceInCents;
     int quantity;
-}
+};
 int main()
 {
     
