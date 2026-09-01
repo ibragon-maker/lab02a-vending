@@ -1,8 +1,8 @@
 /*
   file: vending.cpp
   author: student
-  description: vending machine lab program that handles inventory display,
-               inserting coins, purchasing items, and giving back change.
+  description: vending machine program with stretch goals (restock mode, coin bank tracking,
+               exact change validation, and sales reporting on exit).
 */
 
 #include <iostream>
@@ -18,25 +18,63 @@ struct Item
 {
     string Code;
     string name;
-    int priceInCents; // keeping this in cents so floating point math doesn't ruin totals
+    int priceInCents;
     int quantity;
+    int unitsSold = 0; // tracks total items sold for sales report
 };
 
-// main function to run the vending machine loop
+// struct to manage the machine's physical coin supply
+struct CoinBank
+{
+    int dollars = 10;
+    int quarters = 20;
+    int dimes = 20;
+    int nickels = 20;
+};
+
+// helper function to test if current coin bank can dispense a specific change amount
+bool canMakeChange(int changeNeeded, CoinBank bank)
+{
+    while (changeNeeded >= 100 && bank.dollars > 0)
+    {
+        changeNeeded -= 100;
+        bank.dollars--;
+    }
+    while (changeNeeded >= 25 && bank.quarters > 0)
+    {
+        changeNeeded -= 25;
+        bank.quarters--;
+    }
+    while (changeNeeded >= 10 && bank.dimes > 0)
+    {
+        changeNeeded -= 10;
+        bank.dimes--;
+    }
+    while (changeNeeded >= 5 && bank.nickels > 0)
+    {
+        changeNeeded -= 5;
+        bank.nickels--;
+    }
+    return changeNeeded == 0;
+}
+
 int main()
 {
-    // setting up the initial inventory with prices and stock levels
+    // initial inventory
     Item items[6] = {
-        {"A1", "Water",     100, 3},
-        {"A2", "Coke",      150, 4},
-        {"B1", "Chips",     200, 1},
-        {"B2", "Chocolate", 150, 2},
-        {"C1", "Granola",   100, 0},
-        {"C2", "Candy",     150, 5},
+        {"A1", "Water",     100, 3, 0},
+        {"A2", "Coke",      150, 4, 0},
+        {"B1", "Chips",     200, 1, 0},
+        {"B2", "Chocolate", 150, 2, 0},
+        {"C1", "Granola",   100, 0, 0},
+        {"C2", "Candy",     150, 5, 0},
     };
 
+    CoinBank bank;
     int choice = 0;
-    int currentCredit = 0; // keeps track of money added in cents
+    int currentCredit = 0;
+    int totalRevenue = 0;
+    const int MAX_CAPACITY = 10;
 
     do
     {
@@ -46,19 +84,40 @@ int main()
         cout << "3. Buy Item" << endl;
         cout << "4. Refund" << endl;
         cout << "5. Exit" << endl;
-        // dividing by 100.0 to display total money as formatted dollars
         cout << "Current credit: $" << fixed << setprecision(2) << (currentCredit / 100.0) << endl;
         cout << "Enter choice: ";
 
         cin >> choice;
 
-        if (choice < 1 || choice > 5)
+        if (choice == 99) // stretch goal 1: hidden operator restock mode
+        {
+            cout << "\n*** OPERATOR RESTOCK MODE ***" << endl;
+            string slot;
+            cout << "Enter item code to restock (or 0 to cancel): ";
+            cin >> slot;
+
+            if (slot != "0")
+            {
+                bool found = false;
+                for (int i = 0; i < 6; i++)
+                {
+                    if (items[i].Code == slot)
+                    {
+                        found = true;
+                        items[i].quantity = MAX_CAPACITY;
+                        cout << items[i].name << " restocked to max capacity (" << MAX_CAPACITY << ")." << endl;
+                        break;
+                    }
+                }
+                if (!found) cout << "Invalid code!" << endl;
+            }
+        }
+        else if (choice < 1 || choice > 5)
         {
             cout << "Error, please select a number between 1-5" << endl;
         }
         else if (choice == 1)
         {
-            // print inventory table with clean formatting
             cout << "\n--------------------------------------------------" << endl;
             cout << left  << setw(6)  << "Code" 
                  << left  << setw(18) << "Name" 
@@ -81,43 +140,23 @@ int main()
             int choiceCoin;
             do {
                 cout << "\n1. Nickel\n2. Dime\n3. Quarter\n4. Dollar Coin ($1.00)\n0. Cancel" << endl;
-                cout << " " << endl;
                 cout << "Pick an option (1-4) or 0 to stop: ";
                 cin >> choiceCoin;
 
-                if (choiceCoin == 0)
-                {
-                    cout << "Returning to main menu..." << endl;
-                }
-                else if (choiceCoin == 1) 
-                {
-                    currentCredit += 5; 
-                }
-                else if (choiceCoin == 2)
-                {
-                    currentCredit += 10;
-                }
-                else if (choiceCoin == 3)
-                {
-                    currentCredit += 25;
-                }
-                else if (choiceCoin == 4)
-                {
-                    currentCredit += 100;
-                }
-                else
-                {
-                    cout << "Error, please pick an option between 1-4 (or 0 to cancel)" << endl;
-                }
+                // stretch goal 2: coin bank grows as payments are inserted
+                if (choiceCoin == 1) { currentCredit += 5; bank.nickels++; }
+                else if (choiceCoin == 2) { currentCredit += 10; bank.dimes++; }
+                else if (choiceCoin == 3) { currentCredit += 25; bank.quarters++; }
+                else if (choiceCoin == 4) { currentCredit += 100; bank.dollars++; }
+                else if (choiceCoin != 0) { cout << "Invalid selection." << endl; }
+
             } while(choiceCoin != 0);
         }
         else if (choice == 3) // buying an item
         {
-            // keeping starting credit saved so receipt can show tendered amount
             int duplicateCredit = currentCredit;
             string slotChoice;
             cout << "Select a slot number (e.g., A1, B2): ";
-            cout << " " << endl;
             cin >> slotChoice;
 
             bool found = false;
@@ -127,8 +166,8 @@ int main()
                 if (items[i].Code == slotChoice)
                 {
                     found = true;
+                    int changeNeeded = currentCredit - items[i].priceInCents;
 
-                    // make sure item is in stock and user added enough coins
                     if (items[i].quantity <= 0)
                     {
                         cout << "Sorry, " << items[i].name << " is out of stock!" << endl;
@@ -137,33 +176,35 @@ int main()
                     {
                         int missing = items[i].priceInCents - currentCredit;
                         cout << "Insufficient credit! You need $" 
-                             << fixed << setprecision(2) << (missing / 100.0) 
-                             << " more." << endl;
+                             << fixed << setprecision(2) << (missing / 100.0) << " more." << endl;
+                    }
+                    // stretch goal 3: check exact change capability
+                    else if (!canMakeChange(changeNeeded, bank))
+                    {
+                        cout << "\n[EXACT CHANGE ONLY] Machine cannot provide change for this purchase!" << endl;
+                        cout << "Transaction cancelled. Please insert exact change or select a different item." << endl;
                     }
                     else
                     {
-                        // subtract price and take one from stock
                         currentCredit -= items[i].priceInCents;
                         items[i].quantity--;
+                        items[i].unitsSold++;
+                        totalRevenue += items[i].priceInCents;
 
                         cout << "\n------- Receipt -------" << endl;
                         cout << "Item: " << items[i].name << endl;
                         cout << "Price: $" << fixed << setprecision(2) << (items[i].priceInCents / 100.0) << endl;
                         cout << "Tendered: $" << fixed << setprecision(2) << (duplicateCredit / 100.0) << endl;
-                        cout << "Change: $" << fixed << setprecision(2) << ((duplicateCredit - items[i].priceInCents) / 100.0) << endl;
+                        cout << "Change: $" << fixed << setprecision(2) << (changeNeeded / 100.0) << endl;
                         cout << "-----------------------" << endl;
                     }
-
                     break; 
                 }
             }
 
-            if (!found)
-            {
-                cout << "Invalid code! Item not found." << endl;
-            }
+            if (!found) cout << "Invalid code! Item not found." << endl;
         }
-        else if (choice == 4) // giving back remaining change
+        else if (choice == 4) // refund change using actual coin bank
         {
             if (currentCredit == 0)
             {
@@ -172,50 +213,54 @@ int main()
             else
             {
                 int refundAmount = currentCredit;
-                int dollars = 0;
-                int quarters = 0;
-                int dimes = 0;
-                int nickels = 0;
+                int d = 0, q = 0, dm = 0, n = 0;
 
-                // give largest coin coins back first to use as few coins as possible
-                while (currentCredit >= 100)
-                {
-                    currentCredit -= 100;
-                    dollars++;
-                }
-
-                while (currentCredit >= 25)
-                {
-                    currentCredit -= 25;
-                    quarters++;
-                }
-
-                while (currentCredit >= 10)
-                {
-                    currentCredit -= 10;
-                    dimes++;
-                }
-
-                while (currentCredit >= 5)
-                {
-                    currentCredit -= 5;
-                    nickels++;
-                }
+                while (currentCredit >= 100 && bank.dollars > 0)
+                { currentCredit -= 100; bank.dollars--; d++; }
+                while (currentCredit >= 25 && bank.quarters > 0)
+                { currentCredit -= 25; bank.quarters--; q++; }
+                while (currentCredit >= 10 && bank.dimes > 0)
+                { currentCredit -= 10; bank.dimes--; dm++; }
+                while (currentCredit >= 5 && bank.nickels > 0)
+                { currentCredit -= 5; bank.nickels--; n++; }
 
                 cout << "\n------- Refund Dispensed -------" << endl;
                 cout << "Total Refunded: $" << fixed << setprecision(2) << (refundAmount / 100.0) << endl;
-                cout << "Dollar Coins ($1.00): " << dollars << endl;
-                cout << "Quarters     ($0.25): " << quarters << endl;
-                cout << "Dimes        ($0.10): " << dimes << endl;
-                cout << "Nickels      ($0.05): " << nickels << endl;
+                cout << "Dollar Coins ($1.00): " << d << endl;
+                cout << "Quarters     ($0.25): " << q << endl;
+                cout << "Dimes        ($0.10): " << dm << endl;
+                cout << "Nickels      ($0.05): " << n << endl;
                 cout << "--------------------------------" << endl;
             }
         }
 
     } while (choice != 5); 
 
-    cout << " " << endl;
-    cout << "Thanks for your business come back soon!";
+    // stretch goal 4: sales report on exit
+    cout << "\n==========================================" << endl;
+    cout << "             FINAL SALES REPORT           " << endl;
+    cout << "==========================================" << endl;
+    cout << "Total Revenue: $" << fixed << setprecision(2) << (totalRevenue / 100.0) << endl;
+    cout << "------------------------------------------" << endl;
+    cout << "Units Sold Per Slot:" << endl;
+
+    int maxSold = -1;
+    string bestSeller = "None";
+
+    for (int i = 0; i < 6; i++)
+    {
+        cout << items[i].Code << " (" << items[i].name << "): " << items[i].unitsSold << " sold" << endl;
+        if (items[i].unitsSold > maxSold && items[i].unitsSold > 0)
+        {
+            maxSold = items[i].unitsSold;
+            bestSeller = items[i].name;
+        }
+    }
+
+    cout << "------------------------------------------" << endl;
+    cout << "Best-Selling Item: " << bestSeller << endl;
+    cout << "==========================================" << endl;
+    cout << "\nThanks for your business come back soon!" << endl;
 
     return 0;
 }
